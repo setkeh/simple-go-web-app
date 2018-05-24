@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"fmt"
 	"net/http"
 )
@@ -10,5 +11,7 @@ func main() {
 		fmt.Fprintf(w, "Hey!, you've requested: %s\n", r.URL.Path)
 	})
 
-	http.ListenAndServe(":8080", nil)
+	defaultPort := "8080"
+	log.Printf("Listening on default port: %s", defaultPort)
+	log.Fatal(http.ListenAndServe(":" + defaultPort, nil))
 }

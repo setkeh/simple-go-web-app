@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A-Simple-Golang-App-Deployment
+Parameters:
+  PrimaryAvailabilityZone:
+    Type: String
+    Default: ap-southeast-2a
+  SecondaryAvailabilityZone:
+    Type: String
+    Default: ap-southeast-2b
+  TertiaryAvailabilityZone:
+    Type: String
+    Default: ap-southeast-2c
+  ImageId:
+    Type: String
+    Default: ami-0153a4eb8b94cfb5e
+
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.55.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true  
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties: {} 
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC  
+  PrimaryPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      CidrBlock: 10.55.1.0/24
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public  
+  SecondaryPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref SecondaryAvailabilityZone
+      CidrBlock: 10.55.2.0/24
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public  
+  TertiaryPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref TertiaryAvailabilityZone
+      CidrBlock: 10.55.3.0/24
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public  
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public  
+  OutboundConnectionRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable  
+  PrimaryPublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PrimaryPublicSubnet  
+  SecondaryPublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SecondaryPublicSubnet  
+  TertiaryPublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref TertiaryPublicSubnet  
+  WebServerSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        - !Ref VPC
+      GroupDescription: Allows inbound http traffic
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: http  
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancing::LoadBalancer'
+    Properties:
+      LoadBalancerName: LoadBalancer
+      Listeners:
+        - InstancePort: 8080
+          InstanceProtocol: HTTP
+          LoadBalancerPort: 80
+          Protocol: HTTP
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref WebServerSG
+      Subnets:
+        - !Ref PrimaryPublicSubnet
+        - !Ref SecondaryPublicSubnet
+        - !Ref TertiaryPublicSubnet  
+  AppLaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      AssociatePublicIpAddress: true
+      ImageId: !Ref ImageId
+      InstanceType: t2.micro
+      SecurityGroups:
+        - !Ref WebServerSG
+    DependsOn: VPCGatewayAttachment  
+  AppASG:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      AvailabilityZones:
+        - !Ref PrimaryAvailabilityZone
+        - !Ref SecondaryAvailabilityZone
+        - !Ref TertiaryAvailabilityZone
+      DesiredCapacity: 3
+      LaunchConfigurationName: 
+        - !Ref AppLaunchConfiguration
+      LoadBalancerNames:
+        - !Ref LoadBalancer
+      MaxSize: 6
+      MinSize: 3
+      VPCZoneIdentifier:
+        - !Ref PrimaryPublicSubnet
+        - !Ref SecondaryPublicSubnet
+        - !Ref TertiaryPublicSubnet
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 2
+
+  BuildS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'simplegowebapp-${AWS::Region}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+    DeletionPolicy: Delete
+  
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CodeBuildRole-${AWS::StackName}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "codebuild.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: /service-role/
+      Policies:
+        -
+          PolicyName: "CodeBuildAccessPolicies"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: SimpleGoWebApp-CodeBuildProject
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        EncryptionDisabled: true
+        Location: !Ref BuildS3Bucket
+        Name: SimpleGoWebApp
+        OverrideArtifactName: false
+        Packaging: none
+        Path: BuildOutput/
+        Type: s3
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/golang:1.10
+      Source:
+        Auth:
+          Type: OAUTH
+        Location: https://github.com/setkeh/simple-go-web-app.git
+        Type: GITHUB
+      Triggers:
+        Webhook: true
+        TimeoutInMinutes: 10

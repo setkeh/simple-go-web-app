@@ -68,7 +68,8 @@ Resources:
         Properties: 
             VPCZoneIdentifier: 
                 - !Ref PrivateSubnet1
-                - !Ref PrivateSubnet2 
+                - !Ref PrivateSubnet2
+                - !Ref PrivateSubnet3
             LaunchConfigurationName: !Ref LaunchConfiguration
             TargetGroupARNs: 
                 - !Ref TargetGroup

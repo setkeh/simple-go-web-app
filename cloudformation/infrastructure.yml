@@ -73,8 +73,8 @@ Resources:
             LaunchConfigurationName: !Ref LaunchConfiguration
             TargetGroupARNs: 
                 - !Ref TargetGroup
-            MinSize: !Ref 3
-            MaxSize: !Ref 6
+            MinSize: 3
+            MaxSize: 6
             DesiredCapacity: 3
             Tags: 
                 - Key: Name

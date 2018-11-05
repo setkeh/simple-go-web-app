@@ -25,9 +25,11 @@ The `pipeline.yml` sets up all of the resources required for the code build/depl
 Apologies for the poor screenshots my equipment is limited at the moment.
 
 `Pipeline.yml` Stack Map
+
 ![Pipeline.yml](images/codepipeline.png)
 
 `infrastrucure.yml` Stack Map
+
 ![infrastrucure.yml](images/infrastructure.png)
 
 # Notes
